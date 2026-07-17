@@ -1,0 +1,38 @@
+[
+  {
+    "id": "p1",
+    "name": "Cloud Wool Sweater",
+    "price": 145,
+    "description": "Heavyweight merino, brushed soft. Made to be lived in.",
+    "image": "https://images.unsplash.com/photo-1614975059251-992f11792b9f?q=80&w=800&auto=format&fit=crop",
+    "category": "Outerwear",
+    "inStock": true
+  },
+  {
+    "id": "p2",
+    "name": "Field Canvas Tote",
+    "price": 58,
+    "description": "Waxed canvas, leather strap. Ages with you.",
+    "image": "https://images.unsplash.com/photo-1591561954557-26941169b49e?q=80&w=800&auto=format&fit=crop",
+    "category": "Bags",
+    "inStock": true
+  },
+  {
+    "id": "p3",
+    "name": "Quiet Linen Shirt",
+    "price": 92,
+    "description": "Washed linen with a soft drape. Runs true to size.",
+    "image": "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800&auto=format&fit=crop",
+    "category": "Shirts",
+    "inStock": true
+  },
+  {
+    "id": "p4",
+    "name": "Stone Ceramic Mug",
+    "price": 24,
+    "description": "Hand-thrown, matte glaze. Holds heat, holds still.",
+    "image": "https://images.unsplash.com/photo-1517142089942-ba376ce32a2e?q=80&w=800&auto=format&fit=crop",
+    "category": "Home",
+    "inStock": true
+  }
+]

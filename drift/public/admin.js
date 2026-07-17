@@ -1,0 +1,285 @@
+(function () {
+  'use strict';
+
+  let products = [];
+  let pendingImageData = null; // base64 data URI staged from file input
+
+  const loginScreen = document.getElementById('loginScreen');
+  const adminApp = document.getElementById('adminApp');
+  const loginForm = document.getElementById('loginForm');
+  const loginError = document.getElementById('loginError');
+
+  const itemTable = document.getElementById('itemTable');
+  const itemsEmpty = document.getElementById('itemsEmpty');
+
+  const modalScrim = document.getElementById('modalScrim');
+  const itemModal = document.getElementById('itemModal');
+  const itemForm = document.getElementById('itemForm');
+  const modalTitle = document.getElementById('modalTitle');
+  const itemError = document.getElementById('itemError');
+  const deleteItemBtn = document.getElementById('deleteItemBtn');
+  const imagePreview = document.getElementById('imagePreview');
+
+  // ---------- auth ----------
+
+  async function checkSession() {
+    const res = await fetch('/api/session');
+    const data = await res.json();
+    if (data.loggedIn) {
+      showApp();
+    } else {
+      showLogin();
+    }
+  }
+
+  function showLogin() {
+    loginScreen.hidden = false;
+    adminApp.hidden = true;
+  }
+
+  function showApp() {
+    loginScreen.hidden = true;
+    adminApp.hidden = false;
+    loadProducts();
+    loadSettings();
+  }
+
+  loginForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    loginError.hidden = true;
+    const password = document.getElementById('loginPassword').value;
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      loginError.textContent = data.error || 'Something went wrong.';
+      loginError.hidden = false;
+      return;
+    }
+    showApp();
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    showLogin();
+  });
+
+  // ---------- tabs ----------
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach(p => (p.hidden = true));
+      document.getElementById(`tab-${btn.dataset.tab}`).hidden = false;
+    });
+  });
+
+  // ---------- items ----------
+
+  async function loadProducts() {
+    const res = await fetch('/api/products');
+    products = await res.json();
+    renderTable();
+  }
+
+  function renderTable() {
+    if (!products.length) {
+      itemsEmpty.hidden = false;
+      itemTable.innerHTML = '';
+      return;
+    }
+    itemsEmpty.hidden = true;
+    itemTable.innerHTML = products.map(p => `
+      <div class="item-row" data-id="${p.id}">
+        <img src="${escapeAttr(p.image || '')}" alt="">
+        <div class="item-row-info">
+          <p class="item-row-name">${escapeHTML(p.name)}</p>
+          <p class="item-row-meta">
+            <span class="price">${escapeHTML(String(p.price))}</span>
+            ${p.category ? ` · ${escapeHTML(p.category)}` : ''}
+            <span class="pill ${p.inStock === false ? 'out' : ''}">${p.inStock === false ? 'sold out' : 'in stock'}</span>
+          </p>
+        </div>
+        <button class="ghost-btn" data-action="edit" data-id="${p.id}">edit</button>
+      </div>
+    `).join('');
+
+    itemTable.querySelectorAll('[data-action="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => openModal(btn.dataset.id));
+    });
+  }
+
+  document.getElementById('newItemBtn').addEventListener('click', () => openModal(null));
+
+  function openModal(id) {
+    itemError.hidden = true;
+    pendingImageData = null;
+    document.getElementById('itemImageFile').value = '';
+
+    const product = id ? products.find(p => p.id === id) : null;
+
+    modalTitle.textContent = product ? 'edit item' : 'add item';
+    document.getElementById('itemId').value = product ? product.id : '';
+    document.getElementById('itemName').value = product ? product.name : '';
+    document.getElementById('itemPrice').value = product ? product.price : '';
+    document.getElementById('itemCategory').value = product ? (product.category || '') : '';
+    document.getElementById('itemDescription').value = product ? (product.description || '') : '';
+    document.getElementById('itemImageUrl').value = product ? (product.image || '') : '';
+    document.getElementById('itemInStock').checked = product ? product.inStock !== false : true;
+    deleteItemBtn.hidden = !product;
+
+    if (product && product.image) {
+      imagePreview.src = product.image;
+      imagePreview.hidden = false;
+    } else {
+      imagePreview.hidden = true;
+    }
+
+    itemModal.hidden = false;
+    modalScrim.classList.add('open');
+  }
+
+  function closeModal() {
+    itemModal.hidden = true;
+    modalScrim.classList.remove('open');
+  }
+
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  modalScrim.addEventListener('click', closeModal);
+
+  document.getElementById('itemImageFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 6 * 1024 * 1024) {
+      itemError.textContent = 'That image is too large. Try one under 6MB.';
+      itemError.hidden = false;
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingImageData = reader.result;
+      imagePreview.src = pendingImageData;
+      imagePreview.hidden = false;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  itemForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    itemError.hidden = true;
+
+    const id = document.getElementById('itemId').value;
+    const payload = {
+      name: document.getElementById('itemName').value.trim(),
+      price: parseFloat(document.getElementById('itemPrice').value),
+      category: document.getElementById('itemCategory').value.trim(),
+      description: document.getElementById('itemDescription').value.trim(),
+      image: pendingImageData || document.getElementById('itemImageUrl').value.trim(),
+      inStock: document.getElementById('itemInStock').checked
+    };
+
+    const res = await fetch(id ? `/api/products/${id}` : '/api/products', {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      itemError.textContent = data.error || 'Could not save that item.';
+      itemError.hidden = false;
+      return;
+    }
+
+    closeModal();
+    loadProducts();
+  });
+
+  deleteItemBtn.addEventListener('click', async () => {
+    const id = document.getElementById('itemId').value;
+    if (!id) return;
+    if (!confirm('Remove this item from the shop? This can\'t be undone.')) return;
+    const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      closeModal();
+      loadProducts();
+    }
+  });
+
+  // ---------- settings ----------
+
+  async function loadSettings() {
+    const res = await fetch('/api/config');
+    const config = await res.json();
+    document.getElementById('storeName').value = config.storeName || '';
+    document.getElementById('whatsappNumber').value = config.whatsappNumber || '';
+    document.getElementById('currency').value = config.currency || '$';
+  }
+
+  document.getElementById('settingsForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const success = document.getElementById('settingsSuccess');
+    success.hidden = true;
+
+    const res = await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storeName: document.getElementById('storeName').value.trim(),
+        whatsappNumber: document.getElementById('whatsappNumber').value.trim(),
+        currency: document.getElementById('currency').value.trim()
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      success.hidden = false;
+      setTimeout(() => (success.hidden = true), 2500);
+    } else {
+      alert(data.error || 'Could not save settings.');
+    }
+  });
+
+  document.getElementById('passwordForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const errorEl = document.getElementById('passwordError');
+    const successEl = document.getElementById('passwordSuccess');
+    errorEl.hidden = true;
+    successEl.hidden = true;
+
+    const res = await fetch('/api/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        currentPassword: document.getElementById('currentPassword').value,
+        newPassword: document.getElementById('newPassword').value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Could not update password.';
+      errorEl.hidden = false;
+      return;
+    }
+    successEl.hidden = false;
+    e.target.reset();
+  });
+
+  // ---------- helpers ----------
+
+  function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  function escapeAttr(str) {
+    return escapeHTML(str).replace(/"/g, '&quot;');
+  }
+
+  checkSession();
+})();

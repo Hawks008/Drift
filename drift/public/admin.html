@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>drift — admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;1,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body class="admin-body">
+
+<!-- login screen -->
+<section class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <p class="wordmark small" style="margin-bottom:0.25rem;">drift</p>
+    <p class="login-caption">admin — for the shopkeeper only</p>
+    <form id="loginForm">
+      <label class="field-label" for="loginPassword">password</label>
+      <input type="password" id="loginPassword" required autofocus>
+      <p class="form-error" id="loginError" hidden></p>
+      <button type="submit" class="send-btn" style="width:100%;">sign in →</button>
+    </form>
+  </div>
+</section>
+
+<!-- admin app -->
+<div class="admin-app" id="adminApp" hidden>
+  <header class="admin-topbar">
+    <a href="/" class="wordmark small">drift</a>
+    <div class="admin-topbar-right">
+      <a href="/" target="_blank" class="ghost-link">view storefront ↗</a>
+      <button class="ghost-btn" id="logoutBtn">sign out</button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <nav class="admin-tabs">
+      <button class="tab-btn active" data-tab="items">items</button>
+      <button class="tab-btn" data-tab="settings">settings</button>
+    </nav>
+
+    <!-- ITEMS TAB -->
+    <section class="tab-panel" id="tab-items">
+      <div class="panel-head">
+        <h2>catalogue</h2>
+        <button class="send-btn" id="newItemBtn">+ add item</button>
+      </div>
+      <p class="admin-empty" id="itemsEmpty" hidden>No items yet. Add your first piece to open the shop.</p>
+      <div class="item-table" id="itemTable"></div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section class="tab-panel" id="tab-settings" hidden>
+      <h2>settings</h2>
+
+      <form id="settingsForm" class="settings-form">
+        <label class="field-label" for="storeName">shop name</label>
+        <input type="text" id="storeName" maxlength="60">
+
+        <label class="field-label" for="whatsappNumber">whatsapp number</label>
+        <input type="text" id="whatsappNumber" placeholder="e.g. 233241234567 (country code, no + or spaces)">
+        <p class="hint">Digits only, with country code, no leading zero, no +. This is where every order gets sent.</p>
+
+        <label class="field-label" for="currency">currency symbol</label>
+        <input type="text" id="currency" maxlength="6" placeholder="$">
+
+        <p class="form-success" id="settingsSuccess" hidden>Saved.</p>
+        <button type="submit" class="send-btn">save settings</button>
+      </form>
+
+      <hr class="divider">
+
+      <h2>change password</h2>
+      <form id="passwordForm" class="settings-form">
+        <label class="field-label" for="currentPassword">current password</label>
+        <input type="password" id="currentPassword" required>
+
+        <label class="field-label" for="newPassword">new password</label>
+        <input type="password" id="newPassword" required minlength="6">
+
+        <p class="form-error" id="passwordError" hidden></p>
+        <p class="form-success" id="passwordSuccess" hidden>Password updated.</p>
+        <button type="submit" class="send-btn">update password</button>
+      </form>
+    </section>
+  </main>
+</div>
+
+<!-- item editor modal -->
+<div class="scrim" id="modalScrim"></div>
+<div class="modal" id="itemModal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="modalTitle">add item</h3>
+      <button class="icon-btn" id="closeModal" aria-label="Close">×</button>
+    </div>
+    <form id="itemForm" class="settings-form">
+      <input type="hidden" id="itemId">
+
+      <label class="field-label" for="itemName">name</label>
+      <input type="text" id="itemName" required maxlength="120">
+
+      <label class="field-label" for="itemPrice">price</label>
+      <input type="number" id="itemPrice" required min="0" step="0.01">
+
+      <label class="field-label" for="itemCategory">category (optional)</label>
+      <input type="text" id="itemCategory" maxlength="60" placeholder="e.g. Shirts">
+
+      <label class="field-label" for="itemDescription">description</label>
+      <textarea id="itemDescription" maxlength="500" rows="3"></textarea>
+
+      <label class="field-label" for="itemImageUrl">image URL</label>
+      <input type="text" id="itemImageUrl" placeholder="https://…">
+      <p class="hint">Or upload a photo instead — it'll be used over the URL above.</p>
+      <input type="file" id="itemImageFile" accept="image/*">
+      <img id="imagePreview" class="image-preview" hidden alt="Preview">
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="itemInStock" checked>
+        <span>in stock</span>
+      </label>
+
+      <p class="form-error" id="itemError" hidden></p>
+
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="deleteItemBtn" hidden>delete</button>
+        <button type="submit" class="send-btn">save item</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/admin.js"></script>
+</body>
+</html>
