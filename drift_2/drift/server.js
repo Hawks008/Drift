@@ -30,9 +30,9 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const USE_UPSTASH = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
 
 async function upstashCommand(command) {
-  const res = await fetch(UPSTASH_URL, {
+  const res = await fetch(https:"https://helping-salmon-168332.upstash.io", {
     method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    headers: { Authorization: `Bearer ${********}` },
     body: JSON.stringify(command)
   });
   const data = await res.json();
