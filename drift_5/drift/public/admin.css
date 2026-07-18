@@ -1,0 +1,283 @@
+.admin-body { background: var(--paper); }
+
+/* Guarantee the hidden attribute always wins over any display rule below —
+   without this, elements like .login-screen and .modal (which set their own
+   display: flex) can stay visible even when JS sets `hidden` on them. */
+[hidden] { display: none !important; }
+
+/* ---------- login ---------- */
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 22rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--sand-line);
+  border-radius: var(--radius);
+  padding: 2rem 1.75rem;
+}
+
+.login-caption {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin: 0 0 1.5rem;
+}
+
+#loginForm { display: flex; flex-direction: column; gap: 0.5rem; }
+
+#loginForm input {
+  font-family: var(--body);
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--sand-line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  margin-bottom: 0.75rem;
+}
+#loginForm input:focus { border-color: var(--slate); }
+
+/* ---------- shared admin bits ---------- */
+
+.form-error {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--danger);
+  margin: 0.2rem 0 0.5rem;
+}
+
+.form-success {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--slate-dark);
+  margin: 0.2rem 0 0.5rem;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin: 0.2rem 0 0.75rem;
+}
+
+.hint a { text-decoration: underline; }
+
+.ghost-btn, .ghost-link {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  background: none;
+  border: 1px solid var(--sand-line);
+  color: var(--ink);
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+.ghost-btn:hover, .ghost-link:hover { background: var(--sand); }
+
+/* ---------- admin shell ---------- */
+
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--sand-line);
+  background: var(--paper-raised);
+}
+
+.admin-topbar-right { display: flex; gap: 0.6rem; align-items: center; }
+
+.admin-main { max-width: 52rem; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
+
+.admin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--sand-line);
+}
+
+.tab-btn {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  background: none;
+  border: none;
+  padding: 0.7rem 0.2rem;
+  margin-right: 1.2rem;
+  cursor: pointer;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab-btn.active { color: var(--ink); border-bottom-color: var(--slate); }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.panel-head h2, .tab-panel > h2 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.admin-empty {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  padding: 2rem 0;
+  text-align: center;
+}
+
+/* ---------- item table ---------- */
+
+.item-table { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--sand-line);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.item-row img {
+  width: 3rem;
+  height: 3.6rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--sand);
+  flex-shrink: 0;
+}
+
+.item-row-info { flex: 1; min-width: 0; }
+.item-row-name { font-weight: 600; font-size: 0.94rem; margin: 0 0 0.15rem; }
+.item-row-meta {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+.item-row-meta .price { color: var(--ochre); }
+
+.pill {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: var(--sand);
+  color: var(--ink-soft);
+  margin-left: 0.4rem;
+}
+.pill.out { background: rgba(163,64,47,0.12); color: var(--danger); }
+
+/* ---------- settings form ---------- */
+
+.settings-form { display: flex; flex-direction: column; max-width: 26rem; }
+
+.settings-form input[type="text"],
+.settings-form input[type="number"],
+.settings-form input[type="password"],
+.settings-form input[type="email"],
+.settings-form select,
+.settings-form textarea {
+  font-family: var(--body);
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--sand-line);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  margin-bottom: 0.3rem;
+  resize: vertical;
+}
+.settings-form input:focus, .settings-form select:focus, .settings-form textarea:focus { border-color: var(--slate); }
+
+.settings-form input[type="file"] { margin: 0.4rem 0 0.75rem; font-size: 0.85rem; }
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 1rem;
+}
+.checkbox-row input { width: 1rem; height: 1rem; }
+
+.image-preview {
+  width: 6rem;
+  height: 7.2rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--sand-line);
+  margin-bottom: 0.75rem;
+}
+
+.divider { border: none; border-top: 1px solid var(--sand-line); margin: 2.5rem 0; }
+
+.send-btn { align-self: flex-start; }
+
+/* ---------- modal ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem;
+  overflow-y: auto;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 30rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--sand-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.4rem;
+  border-bottom: 1px solid var(--sand-line);
+}
+
+.modal-head h3 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+#itemForm { padding: 1.2rem 1.4rem 1.4rem; }
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 30rem) {
+  .admin-main { padding: 1.5rem 1rem 4rem; }
+  .item-row { flex-wrap: wrap; }
+}
