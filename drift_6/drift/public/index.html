@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>drift</title>
+<meta name="description" content="A small shop for things worth slowing down for.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon-32.png" sizes="32x32">
+<link rel="icon" href="/favicon-16.png" sizes="16x16">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a href="/" class="wordmark">drift</a>
+  <nav class="topnav">
+    <a href="#shop">shop</a>
+    <button class="cart-toggle" id="cartToggle" aria-label="Open cart">
+      bag <span class="cart-count" id="cartCount">0</span>
+    </button>
+  </nav>
+</header>
+
+<div class="payment-banner" id="paymentBanner" hidden></div>
+
+<section class="hero">
+  <div class="hero-field" aria-hidden="true"></div>
+  <div class="hero-inner">
+    <p class="eyebrow">a small shop, slowly stocked</p>
+    <h1 class="hero-title"><em>drift</em></h1>
+    <p class="hero-sub">Things worth pausing for. Pick what you like — we'll settle the rest over WhatsApp.</p>
+    <a href="#shop" class="hero-cta">see what's in →</a>
+  </div>
+</section>
+
+<main id="shop" class="shop">
+  <div class="shop-head">
+    <h2>the collection</h2>
+    <p class="shop-count" id="shopCount"></p>
+  </div>
+  <div class="grid" id="productGrid">
+    <!-- product cards render here -->
+  </div>
+  <p class="empty-state" id="emptyState" hidden>Nothing here yet — the shelves are being restocked.</p>
+</main>
+
+<footer class="site-footer">
+  <p><span class="wordmark small">drift</span></p>
+  <p class="footer-note">Orders are confirmed by hand, over WhatsApp — no card details, ever.</p>
+</footer>
+
+<!-- cart drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="cart-drawer" id="cartDrawer" aria-label="Your bag">
+  <div class="cart-head">
+    <h3>your bag</h3>
+    <button class="icon-btn" id="closeCart" aria-label="Close cart">×</button>
+  </div>
+
+  <div class="cart-body" id="cartBody">
+    <p class="cart-empty" id="cartEmptyMsg">Your bag is empty. Add something you like.</p>
+    <div class="cart-items" id="cartItems"></div>
+  </div>
+
+  <div class="cart-footer">
+    <div class="pay-choice" id="payChoice" hidden>
+      <button type="button" class="pay-option active" id="payOnlineBtn" data-mode="online">pay online now</button>
+      <button type="button" class="pay-option" id="payDeliveryBtn" data-mode="delivery">pay on delivery</button>
+    </div>
+
+    <label class="field-label" for="customerName">your name</label>
+    <input type="text" id="customerName" placeholder="So we know who's asking" maxlength="60">
+
+    <label class="field-label" for="customerEmail" id="emailLabel" hidden>your email</label>
+    <input type="email" id="customerEmail" placeholder="For your payment receipt" maxlength="120" hidden>
+
+    <label class="field-label" for="customerNote">a note (optional)</label>
+    <textarea id="customerNote" placeholder="Size, colour, delivery address, anything else" maxlength="300"></textarea>
+
+    <div class="cart-total-row">
+      <span>subtotal</span>
+      <span id="cartTotal">$0</span>
+    </div>
+
+    <p class="form-error" id="checkoutError" hidden></p>
+
+    <button class="send-btn" id="sendOrder">send order via whatsapp →</button>
+    <p class="send-hint" id="sendHint">Opens WhatsApp with your order pre-written. Nothing sends until you tap send there.</p>
+  </div>
+</aside>
+
+<!-- product detail modal -->
+<div class="scrim" id="productScrim"></div>
+<div class="product-modal" id="productModal" hidden>
+  <div class="product-modal-card">
+    <button class="icon-btn product-modal-close" id="closeProductModal" aria-label="Close">×</button>
+
+    <div class="pm-gallery" id="pmGallery">
+      <div class="pm-slides" id="pmSlides"></div>
+      <button class="pm-arrow pm-prev" id="pmPrev" aria-label="Previous photo">‹</button>
+      <button class="pm-arrow pm-next" id="pmNext" aria-label="Next photo">›</button>
+      <div class="pm-dots" id="pmDots"></div>
+    </div>
+
+    <div class="pm-info">
+      <p class="pm-category" id="pmCategory"></p>
+      <h3 class="pm-name" id="pmName"></h3>
+      <p class="pm-price" id="pmPrice"></p>
+      <p class="pm-desc" id="pmDesc"></p>
+
+      <div class="pm-option-group" id="pmColorGroup" hidden>
+        <p class="field-label">color</p>
+        <div class="pm-pills" id="pmColorPills"></div>
+      </div>
+
+      <div class="pm-option-group" id="pmSizeGroup" hidden>
+        <p class="field-label">size</p>
+        <div class="pm-pills" id="pmSizePills"></div>
+      </div>
+
+      <div class="pm-option-group">
+        <p class="field-label">quantity</p>
+        <div class="qty-row">
+          <button class="qty-btn" id="pmQtyDec" aria-label="Decrease quantity">−</button>
+          <span class="qty-value" id="pmQtyValue">1</span>
+          <button class="qty-btn" id="pmQtyInc" aria-label="Increase quantity">+</button>
+        </div>
+      </div>
+
+      <p class="form-error" id="pmError" hidden></p>
+      <button class="send-btn pm-add-btn" id="pmAddBtn">add to bag</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

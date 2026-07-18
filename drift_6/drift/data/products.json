@@ -1,0 +1,73 @@
+[
+  {
+    "id": "p1",
+    "name": "Cloud Wool Sweater",
+    "price": 145,
+    "description": "Heavyweight merino, brushed soft. Made to be lived in.",
+    "images": [
+      "https://images.unsplash.com/photo-1614975059251-992f11792b9f?q=80&w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1576871337622-98d48d1cf531?q=80&w=800&auto=format&fit=crop"
+    ],
+    "colors": [
+      "Charcoal",
+      "Oat"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "category": "Outerwear",
+    "inStock": true
+  },
+  {
+    "id": "p2",
+    "name": "Field Canvas Tote",
+    "price": 58,
+    "description": "Waxed canvas, leather strap. Ages with you.",
+    "images": [
+      "https://images.unsplash.com/photo-1591561954557-26941169b49e?q=80&w=800&auto=format&fit=crop"
+    ],
+    "colors": [
+      "Natural",
+      "Black"
+    ],
+    "sizes": [],
+    "category": "Bags",
+    "inStock": true
+  },
+  {
+    "id": "p3",
+    "name": "Quiet Linen Shirt",
+    "price": 92,
+    "description": "Washed linen with a soft drape. Runs true to size.",
+    "images": [
+      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800&auto=format&fit=crop"
+    ],
+    "colors": [
+      "Stone",
+      "Ink"
+    ],
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "category": "Shirts",
+    "inStock": true
+  },
+  {
+    "id": "p4",
+    "name": "Stone Ceramic Mug",
+    "price": 24,
+    "description": "Hand-thrown, matte glaze. Holds heat, holds still.",
+    "images": [
+      "https://images.unsplash.com/photo-1517142089942-ba376ce32a2e?q=80&w=800&auto=format&fit=crop"
+    ],
+    "colors": [],
+    "sizes": [],
+    "category": "Home",
+    "inStock": true
+  }
+]

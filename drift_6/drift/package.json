@@ -1,0 +1,13 @@
+{
+  "name": "drift",
+  "version": "1.0.0",
+  "private": true,
+  "description": "drift — a minimal storefront that sends orders to WhatsApp",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
