@@ -1,0 +1,660 @@
+// drift — backend
+// Plain Node.js. No npm dependencies. Run with: node server.js
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const url = require('url');
+
+const PORT = process.env.PORT || 3000;
+const ROOT = __dirname;
+const PUBLIC_DIR = path.join(ROOT, 'public');
+
+// DATA_DIR can be overridden with an environment variable. This matters when
+// hosting on a platform with a persistent disk (like Render): point DATA_DIR
+// at the disk's mount path so products and settings survive redeploys,
+// instead of living on the app's ephemeral filesystem.
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
+const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+
+// Optional: store data in Upstash Redis (a free, hosted key-value store)
+// instead of local files. This is the recommended setup for free hosting
+// tiers, since those tiers usually wipe local files on every restart, but
+// Upstash keeps the data regardless of what the host does to the server.
+// Set these two environment variables to turn it on — leave them unset to
+// keep using local files (e.g. when running on your own machine).
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const USE_UPSTASH = Boolean(UPSTASH_URL && UPSTASH_TOKEN);
+
+async function upstashCommand(command) {
+  const res = await fetch(UPSTASH_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    body: JSON.stringify(command)
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(`Upstash error: ${data.error}`);
+  return data.result;
+}
+
+const MAX_BODY_BYTES = 8 * 1024 * 1024; // 8MB, enough for a base64 product photo
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+const PAYSTACK_API_BASE = process.env.PAYSTACK_API_BASE || 'https://api.paystack.co';
+
+async function paystackRequest(secretKey, endpoint, method, body) {
+  const res = await fetch(`${PAYSTACK_API_BASE}${endpoint}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json();
+  return { ok: res.ok, data };
+}
+
+// The very first time drift runs — whether that's a brand-new local data
+// folder, a freshly mounted disk, or a brand-new Upstash database — there's
+// no data yet. Create sensible defaults rather than crash.
+const DEFAULT_PRODUCTS = [
+  {
+    id: 'p1',
+    name: 'Cloud Wool Sweater',
+    price: 145,
+    description: 'Heavyweight merino, brushed soft. Made to be lived in.',
+    images: [
+      'https://images.unsplash.com/photo-1614975059251-992f11792b9f?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?q=80&w=800&auto=format&fit=crop'
+    ],
+    colors: ['Charcoal', 'Oat'],
+    sizes: ['S', 'M', 'L', 'XL'],
+    category: 'Outerwear',
+    isThrifted: false,
+    inStock: true
+  }
+];
+
+function defaultConfig() {
+  // Default admin password is "drift2026" — the same default no matter which
+  // storage backend is in use, so behaviour is predictable on first run.
+  const salt = 'fcf1adf4bcbf99c65e9c87b9d5f3f32f';
+  const hash = crypto.scryptSync('drift2026', salt, 64).toString('hex');
+  return {
+    storeName: 'drift',
+    whatsappNumber: '233000000000',
+    currency: '$',
+    adminPasswordSalt: salt,
+    adminPasswordHash: hash,
+    paymentsEnabled: false,
+    paystackPublicKey: '',
+    paystackSecretKey: '',
+    paystackCurrency: 'GHS'
+  };
+}
+
+// Existing installs (from before online payments existed) won't have the
+// payment fields in their saved config yet — fill in defaults for anything
+// missing rather than let the rest of the app see `undefined`.
+function normalizeConfig(config) {
+  const defaults = defaultConfig();
+  return Object.assign({}, defaults, config);
+}
+
+const PAYSTACK_CURRENCIES = ['GHS', 'NGN', 'USD', 'ZAR', 'KES'];
+
+// ---------- data access (local file or Upstash, chosen automatically) ----------
+
+function readJSON(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function writeJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+async function getProducts() {
+  let products;
+  if (USE_UPSTASH) {
+    const raw = await upstashCommand(['GET', 'drift:products']);
+    products = raw ? JSON.parse(raw) : [];
+  } else {
+    products = readJSON(PRODUCTS_FILE);
+  }
+  return products.map(normalizeProduct);
+}
+
+async function saveProducts(products) {
+  if (USE_UPSTASH) {
+    await upstashCommand(['SET', 'drift:products', JSON.stringify(products)]);
+    return;
+  }
+  writeJSON(PRODUCTS_FILE, products);
+}
+
+async function getConfig() {
+  if (USE_UPSTASH) {
+    const raw = await upstashCommand(['GET', 'drift:config']);
+    return raw ? normalizeConfig(JSON.parse(raw)) : null;
+  }
+  return normalizeConfig(readJSON(CONFIG_FILE));
+}
+
+async function saveConfig(config) {
+  if (USE_UPSTASH) {
+    await upstashCommand(['SET', 'drift:config', JSON.stringify(config)]);
+    return;
+  }
+  writeJSON(CONFIG_FILE, config);
+}
+
+async function ensureDataReady() {
+  if (USE_UPSTASH) {
+    console.log('Using Upstash Redis for storage.');
+    const existingProducts = await upstashCommand(['GET', 'drift:products']);
+    if (!existingProducts) {
+      await upstashCommand(['SET', 'drift:products', JSON.stringify(DEFAULT_PRODUCTS)]);
+      console.log('No products found in Upstash — added a starter item.');
+    }
+    const existingConfig = await upstashCommand(['GET', 'drift:config']);
+    if (!existingConfig) {
+      await upstashCommand(['SET', 'drift:config', JSON.stringify(defaultConfig())]);
+      console.log('No config found in Upstash — created defaults.');
+      console.log('Default admin password is "drift2026" — change it from /admin right away.');
+    }
+    return;
+  }
+
+  // Local file storage. A fresh persistent disk mounts as an empty folder,
+  // so on first boot there may be no data files yet at DATA_DIR.
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`Created data directory at ${DATA_DIR}`);
+  }
+  if (!fs.existsSync(PRODUCTS_FILE)) {
+    writeJSON(PRODUCTS_FILE, DEFAULT_PRODUCTS);
+    console.log(`No products.json found — created one with a starter item at ${PRODUCTS_FILE}`);
+  }
+  if (!fs.existsSync(CONFIG_FILE)) {
+    writeJSON(CONFIG_FILE, defaultConfig());
+    console.log(`No config.json found — created one with defaults at ${CONFIG_FILE}`);
+    console.log(`Default admin password is "drift2026" — change it from /admin right away.`);
+  }
+}
+
+function publicConfig(config) {
+  return {
+    storeName: config.storeName,
+    whatsappNumber: config.whatsappNumber,
+    currency: config.currency,
+    paymentsEnabled: Boolean(config.paymentsEnabled && config.paystackPublicKey && config.paystackSecretKey),
+    paystackPublicKey: config.paystackPublicKey || '',
+    paystackCurrency: config.paystackCurrency || 'GHS'
+  };
+}
+
+// ---------- sessions ----------
+
+const sessions = new Map(); // token -> expiry timestamp
+
+function createSession() {
+  const token = crypto.randomBytes(24).toString('hex');
+  sessions.set(token, Date.now() + SESSION_TTL_MS);
+  return token;
+}
+
+function isValidSession(token) {
+  if (!token) return false;
+  const expiry = sessions.get(token);
+  if (!expiry) return false;
+  if (Date.now() > expiry) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  header.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if (idx === -1) return;
+    const key = pair.slice(0, idx).trim();
+    const val = pair.slice(idx + 1).trim();
+    out[key] = decodeURIComponent(val);
+  });
+  return out;
+}
+
+function requireAuth(req) {
+  const cookies = parseCookies(req);
+  return isValidSession(cookies.drift_session);
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+function verifyPassword(password, config) {
+  const attempt = hashPassword(password, config.adminPasswordSalt);
+  const stored = Buffer.from(config.adminPasswordHash, 'hex');
+  const given = Buffer.from(attempt, 'hex');
+  if (stored.length !== given.length) return false;
+  return crypto.timingSafeEqual(stored, given);
+}
+
+// ---------- body parsing ----------
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let chunks = [];
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('PAYLOAD_TOO_LARGE'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+async function readJSONBody(req) {
+  const raw = await readBody(req);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error('BAD_JSON');
+  }
+}
+
+// ---------- response helpers ----------
+
+function sendJSON(res, status, data, extraHeaders) {
+  const body = JSON.stringify(data);
+  res.writeHead(status, Object.assign({
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body)
+  }, extraHeaders || {}));
+  res.end(body);
+}
+
+function setSessionCookie(res, token) {
+  const maxAge = Math.floor(SESSION_TTL_MS / 1000);
+  res.setHeader('Set-Cookie', `drift_session=${token}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Lax`);
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', 'drift_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax');
+}
+
+// ---------- validation ----------
+
+function sanitizeProductInput(body) {
+  const name = String(body.name || '').trim().slice(0, 120);
+  const description = String(body.description || '').trim().slice(0, 500);
+  const category = String(body.category || '').trim().slice(0, 60);
+  const price = Number(body.price);
+  const inStock = body.inStock === undefined ? true : Boolean(body.inStock);
+
+  const rawImages = Array.isArray(body.images) ? body.images
+    : body.image ? [body.image] // legacy single-image submissions still work
+    : [];
+  const images = rawImages
+    .map(img => String(img || '').trim().slice(0, 5_000_000))
+    .filter(Boolean)
+    .slice(0, 6);
+
+  const colors = (Array.isArray(body.colors) ? body.colors : [])
+    .map(c => String(c || '').trim().slice(0, 30))
+    .filter(Boolean)
+    .slice(0, 12);
+
+  const sizes = (Array.isArray(body.sizes) ? body.sizes : [])
+    .map(s => String(s || '').trim().slice(0, 20))
+    .filter(Boolean)
+    .slice(0, 10);
+
+  const isThrifted = Boolean(body.isThrifted);
+
+  if (!name) throw new Error('Name is required.');
+  if (!Number.isFinite(price) || price < 0) throw new Error('Price must be a positive number.');
+
+  return { name, description, category, images, colors, sizes, isThrifted, price, inStock };
+}
+
+// Older products saved before multi-image/variant support only have a single
+// `image` string. Normalize them into the new shape on the way out, so the
+// frontend only ever has to deal with one format.
+function normalizeProduct(product) {
+  const images = Array.isArray(product.images) ? product.images
+    : product.image ? [product.image]
+    : [];
+  return Object.assign({}, product, {
+    images,
+    colors: Array.isArray(product.colors) ? product.colors : [],
+    sizes: Array.isArray(product.sizes) ? product.sizes : [],
+    isThrifted: Boolean(product.isThrifted)
+  });
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+// ---------- static file serving ----------
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.ico': 'image/x-icon'
+};
+
+function serveStatic(req, res, pathname) {
+  let filePath = pathname === '/' ? '/index.html'
+    : pathname === '/admin' ? '/admin.html'
+    : pathname;
+
+  // prevent path traversal
+  const safePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, '');
+  const fullPath = path.join(PUBLIC_DIR, safePath);
+
+  if (!fullPath.startsWith(PUBLIC_DIR)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  fs.readFile(fullPath, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+      return;
+    }
+    const ext = path.extname(fullPath);
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    res.end(data);
+  });
+}
+
+// ---------- request router ----------
+
+async function handleApi(req, res, pathname) {
+  const method = req.method;
+
+  // --- public reads ---
+  if (method === 'GET' && pathname === '/api/products') {
+    return sendJSON(res, 200, await getProducts());
+  }
+
+  if (method === 'GET' && pathname === '/api/config') {
+    return sendJSON(res, 200, publicConfig(await getConfig()));
+  }
+
+  if (method === 'GET' && pathname === '/api/session') {
+    return sendJSON(res, 200, { loggedIn: requireAuth(req) });
+  }
+
+  // --- auth ---
+  if (method === 'POST' && pathname === '/api/login') {
+    const body = await readJSONBody(req);
+    const config = await getConfig();
+    if (!body.password || !verifyPassword(String(body.password), config)) {
+      return sendJSON(res, 401, { error: "That password doesn't match. Try again." });
+    }
+    const token = createSession();
+    setSessionCookie(res, token);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  if (method === 'POST' && pathname === '/api/logout') {
+    const cookies = parseCookies(req);
+    sessions.delete(cookies.drift_session);
+    clearSessionCookie(res);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // --- everything below requires an admin session ---
+  const authed = requireAuth(req);
+
+  if (method === 'GET' && pathname === '/api/admin/config') {
+    if (!authed) return sendJSON(res, 401, { error: 'Sign in required.' });
+    const config = await getConfig();
+    return sendJSON(res, 200, {
+      storeName: config.storeName,
+      whatsappNumber: config.whatsappNumber,
+      currency: config.currency,
+      paymentsEnabled: config.paymentsEnabled,
+      paystackPublicKey: config.paystackPublicKey,
+      paystackCurrency: config.paystackCurrency,
+      hasSecretKey: Boolean(config.paystackSecretKey)
+    });
+  }
+
+  // --- payments (public — customers use these during checkout) ---
+
+  if (method === 'POST' && pathname === '/api/payments/initialize') {
+    const body = await readJSONBody(req);
+    const config = await getConfig();
+
+    if (!config.paymentsEnabled || !config.paystackPublicKey || !config.paystackSecretKey) {
+      return sendJSON(res, 400, { error: 'Online payments are not set up yet.' });
+    }
+    if (!isValidEmail(body.email)) {
+      return sendJSON(res, 400, { error: 'Enter a valid email address.' });
+    }
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) {
+      return sendJSON(res, 400, { error: 'Your bag is empty.' });
+    }
+
+    const products = await getProducts();
+    let total = 0;
+    const orderLines = [];
+    for (const item of items) {
+      const product = products.find(p => p.id === item.id);
+      const qty = Math.max(1, Math.min(99, Math.floor(Number(item.qty) || 0)));
+      if (!product || product.inStock === false || qty < 1) continue;
+      total += product.price * qty;
+      const color = String(item.color || '').trim().slice(0, 30);
+      const size = String(item.size || '').trim().slice(0, 20);
+      orderLines.push({ name: product.name, qty, price: product.price, color, size });
+    }
+    if (!orderLines.length || total <= 0) {
+      return sendJSON(res, 400, { error: 'Nothing in your bag could be ordered.' });
+    }
+
+    const customerName = String(body.customerName || '').trim().slice(0, 60);
+    const customerNote = String(body.customerNote || '').trim().slice(0, 300);
+    const proto = req.headers['x-forwarded-proto'] || 'http';
+    const origin = `${proto}://${req.headers.host}`;
+
+    const { ok, data } = await paystackRequest(config.paystackSecretKey, '/transaction/initialize', 'POST', {
+      email: body.email.trim(),
+      amount: Math.round(total * 100), // Paystack expects the lowest currency subunit
+      currency: config.paystackCurrency,
+      callback_url: `${origin}/`,
+      metadata: { customerName, customerNote, orderLines, storeName: config.storeName }
+    });
+
+    if (!ok || !data.status) {
+      console.error('Paystack initialize failed:', data);
+      return sendJSON(res, 502, { error: 'Could not start the payment. Please try again.' });
+    }
+
+    return sendJSON(res, 200, { authorization_url: data.data.authorization_url, reference: data.data.reference });
+  }
+
+  const verifyMatch = pathname.match(/^\/api\/payments\/verify\/([^/]+)$/);
+  if (method === 'GET' && verifyMatch) {
+    const reference = decodeURIComponent(verifyMatch[1]);
+    const config = await getConfig();
+    if (!config.paystackSecretKey) {
+      return sendJSON(res, 400, { error: 'Payments are not set up.' });
+    }
+
+    const { ok, data } = await paystackRequest(config.paystackSecretKey, `/transaction/verify/${encodeURIComponent(reference)}`, 'GET');
+    if (!ok || !data.status || data.data.status !== 'success') {
+      return sendJSON(res, 200, { verified: false });
+    }
+
+    return sendJSON(res, 200, {
+      verified: true,
+      amount: data.data.amount,
+      currency: data.data.currency,
+      metadata: data.data.metadata || {},
+      reference
+    });
+  }
+
+  if (method === 'POST' && pathname === '/api/products') {
+    if (!authed) return sendJSON(res, 401, { error: 'Sign in required.' });
+    const body = await readJSONBody(req);
+    let clean;
+    try {
+      clean = sanitizeProductInput(body);
+    } catch (e) {
+      return sendJSON(res, 400, { error: e.message });
+    }
+    const products = await getProducts();
+    const product = Object.assign({ id: crypto.randomUUID() }, clean);
+    products.unshift(product);
+    await saveProducts(products);
+    return sendJSON(res, 201, product);
+  }
+
+  const productMatch = pathname.match(/^\/api\/products\/([^/]+)$/);
+  if (productMatch) {
+    if (!authed) return sendJSON(res, 401, { error: 'Sign in required.' });
+    const id = decodeURIComponent(productMatch[1]);
+    const products = await getProducts();
+    const idx = products.findIndex(p => p.id === id);
+
+    if (method === 'PUT') {
+      if (idx === -1) return sendJSON(res, 404, { error: 'Item not found.' });
+      const body = await readJSONBody(req);
+      let clean;
+      try {
+        clean = sanitizeProductInput(Object.assign({}, products[idx], body));
+      } catch (e) {
+        return sendJSON(res, 400, { error: e.message });
+      }
+      products[idx] = Object.assign({}, products[idx], clean);
+      await saveProducts(products);
+      return sendJSON(res, 200, products[idx]);
+    }
+
+    if (method === 'DELETE') {
+      if (idx === -1) return sendJSON(res, 404, { error: 'Item not found.' });
+      const [removed] = products.splice(idx, 1);
+      await saveProducts(products);
+      return sendJSON(res, 200, { ok: true, removed });
+    }
+  }
+
+  if (method === 'PUT' && pathname === '/api/config') {
+    if (!authed) return sendJSON(res, 401, { error: 'Sign in required.' });
+    const body = await readJSONBody(req);
+    const config = await getConfig();
+    if (typeof body.storeName === 'string' && body.storeName.trim()) {
+      config.storeName = body.storeName.trim().slice(0, 60);
+    }
+    if (typeof body.whatsappNumber === 'string') {
+      const digits = body.whatsappNumber.replace(/[^\d]/g, '');
+      if (!digits) return sendJSON(res, 400, { error: 'Enter a valid WhatsApp number, digits only, with country code.' });
+      config.whatsappNumber = digits;
+    }
+    if (typeof body.currency === 'string' && body.currency.trim()) {
+      config.currency = body.currency.trim().slice(0, 6);
+    }
+    if (typeof body.paymentsEnabled === 'boolean') {
+      config.paymentsEnabled = body.paymentsEnabled;
+    }
+    if (typeof body.paystackPublicKey === 'string') {
+      config.paystackPublicKey = body.paystackPublicKey.trim().slice(0, 200);
+    }
+    if (typeof body.paystackSecretKey === 'string' && body.paystackSecretKey.trim()) {
+      // Only overwrite the secret key if a new value was actually sent —
+      // the admin UI leaves this blank when displaying existing settings,
+      // so an empty submission means "keep the current key", not "clear it".
+      config.paystackSecretKey = body.paystackSecretKey.trim().slice(0, 200);
+    }
+    if (typeof body.paystackCurrency === 'string' && PAYSTACK_CURRENCIES.includes(body.paystackCurrency)) {
+      config.paystackCurrency = body.paystackCurrency;
+    }
+    await saveConfig(config);
+    return sendJSON(res, 200, publicConfig(config));
+  }
+
+  if (method === 'POST' && pathname === '/api/change-password') {
+    if (!authed) return sendJSON(res, 401, { error: 'Sign in required.' });
+    const body = await readJSONBody(req);
+    const config = await getConfig();
+    if (!body.currentPassword || !verifyPassword(String(body.currentPassword), config)) {
+      return sendJSON(res, 401, { error: 'Current password is incorrect.' });
+    }
+    const next = String(body.newPassword || '');
+    if (next.length < 6) {
+      return sendJSON(res, 400, { error: 'New password needs to be at least 6 characters.' });
+    }
+    const salt = crypto.randomBytes(16).toString('hex');
+    config.adminPasswordSalt = salt;
+    config.adminPasswordHash = hashPassword(next, salt);
+    await saveConfig(config);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  return sendJSON(res, 404, { error: 'Unknown endpoint.' });
+}
+
+const server = http.createServer(async (req, res) => {
+  const parsed = url.parse(req.url);
+  const pathname = decodeURIComponent(parsed.pathname);
+
+  try {
+    if (pathname.startsWith('/api/')) {
+      await handleApi(req, res, pathname);
+    } else {
+      serveStatic(req, res, pathname);
+    }
+  } catch (err) {
+    if (err.message === 'PAYLOAD_TOO_LARGE') {
+      return sendJSON(res, 413, { error: 'That image is too large. Try a smaller photo.' });
+    }
+    if (err.message === 'BAD_JSON') {
+      return sendJSON(res, 400, { error: 'Malformed request.' });
+    }
+    console.error(err);
+    sendJSON(res, 500, { error: 'Something went wrong on the server.' });
+  }
+});
+
+async function start() {
+  await ensureDataReady();
+  server.listen(PORT, () => {
+    console.log(`drift is running at http://localhost:${PORT}`);
+    console.log(`admin panel at http://localhost:${PORT}/admin`);
+    console.log(USE_UPSTASH ? 'storage: Upstash Redis' : `storage: local files at ${DATA_DIR}`);
+  });
+}
+
+start().catch(err => {
+  console.error('Failed to start drift:', err);
+  process.exit(1);
+});
